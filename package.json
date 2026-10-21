@@ -42,7 +42,8 @@
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "prepack": "pnpm build"
   },
   "license": "Apache-2.0",
   "repository": {
@@ -51,20 +52,26 @@
   },
   "homepage": "https://github.com/civilization-os/dsh-git-workbench#readme",
   "bugs": "https://github.com/civilization-os/dsh-git-workbench/issues",
+  "packageManager": "pnpm@10.33.0",
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.5"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.2-rc.1",
     "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
   },
   "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    },
     "@deepseek-ai/dsh-tools": {
       "optional": true
     }

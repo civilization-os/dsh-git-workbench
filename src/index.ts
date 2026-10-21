@@ -30,7 +30,7 @@ export type * from './types.ts'
 export const name = '@civilization/dsh-git-workbench'
 
 /** Required host services */
-export const inject = ['connection']
+export const inject = ['connection', 'webServer']
 
 interface HostServices {
   connection: {
@@ -40,6 +40,9 @@ interface HostServices {
         handler: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<unknown>
       ) => () => void
     }
+  }
+  webServer?: {
+    register: (route: unknown) => () => void
   }
   sessions?: {
     get: (id: string) => { header?: { cwd?: string } } | undefined

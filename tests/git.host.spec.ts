@@ -137,6 +137,12 @@ describe('git host plugin', () => {
       },
     }
 
+    // Mock webServer service
+    ctx.provide('webServer')
+    ;(ctx as any).webServer = {
+      register: () => () => {},
+    }
+
     // Mock sandbox policy
     ctx.provide('sandboxPolicy')
     ;(ctx as any).sandboxPolicy = { workspaceRoot: repo }
