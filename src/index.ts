@@ -27,7 +27,7 @@ import { registerGitTool } from './tool.ts'
 export type * from './types.ts'
 
 /** Cordis plugin name */
-export const name = '@civilization/dsh-git-sidebar'
+export const name = '@civilization/dsh-git-workbench'
 
 /** Required host services */
 export const inject = ['connection']

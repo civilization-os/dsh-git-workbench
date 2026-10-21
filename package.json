@@ -1,5 +1,5 @@
 {
-  "name": "@civilization/dsh-git-sidebar",
+  "name": "@civilization/dsh-git-workbench",
   "version": "0.4.0",
   "description": "IntelliJ IDEA-grade Git Workbench, DAG topology graph, branch switcher, tag manager and agent tools for DeepSeek Harness.",
   "type": "module",
@@ -47,10 +47,10 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/civilization-os/dsh-git-sidebar.git"
+    "url": "git+https://github.com/civilization-os/dsh-git-workbench.git"
   },
-  "homepage": "https://github.com/civilization-os/dsh-git-sidebar#readme",
-  "bugs": "https://github.com/civilization-os/dsh-git-sidebar/issues",
+  "homepage": "https://github.com/civilization-os/dsh-git-workbench#readme",
+  "bugs": "https://github.com/civilization-os/dsh-git-workbench/issues",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

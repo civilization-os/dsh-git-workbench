@@ -8,7 +8,7 @@ import React from 'react'
 export const GIT_KIND = 'git'
 
 /** Implementation identity in the tab system */
-export const GIT_ID = '@civilization/dsh-git-sidebar'
+export const GIT_ID = '@civilization/dsh-git-workbench'
 
 export interface SidebarRightTabGuide {
   id?: string

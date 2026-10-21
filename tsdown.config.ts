@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
-const PLUGIN_ID = '@civilization/dsh-git-sidebar'
+const PLUGIN_ID = '@civilization/dsh-git-workbench'
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url))
 
 const PLATFORM_MODULES = [

@@ -1,4 +1,4 @@
-# @civilization/dsh-git-sidebar
+# @civilization/dsh-git-workbench
 
 **IntelliJ IDEA 级别的专业 Git 版本控制工作台插件，专为 DeepSeek Harness (DSH) 打造。**
 
@@ -71,7 +71,7 @@
 在官方 DeepSeek Harness 运行时环境或项目中安装：
 
 ```bash
-pnpm add @civilization/dsh-git-sidebar
+pnpm add @civilization/dsh-git-workbench
 ```
 
 ### 2. 在 `cordis.yml` 中启用插件
@@ -80,7 +80,7 @@ pnpm add @civilization/dsh-git-sidebar
 
 ```yaml
 plugins:
-  - name: "@civilization/dsh-git-sidebar"
+  - name: "@civilization/dsh-git-workbench"
 ```
 
 启动 DeepSeek Harness 后，右侧栏将出现专属的 **Git** 图标标签页，底部状态栏将展示实时的分支胶囊。
@@ -98,7 +98,7 @@ plugins:
 
 ```bash
 # 进入插件目录
-cd D:\project\dsh-plugins\dsh-git-sidebar
+cd D:\project\dsh-plugins\dsh-git-workbench
 
 # 安装依赖
 pnpm install
