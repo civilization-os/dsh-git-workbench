@@ -1,2 +1,3 @@
-- name: "@civilization/dsh-git-workbench"
-  disabled: false
+- insert:
+    - id: '@civilization/dsh-git-workbench'
+      name: '@civilization/dsh-git-workbench'

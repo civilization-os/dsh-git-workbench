@@ -54,8 +54,8 @@
 
 - **独立双端输出**：
   - **Host Node 端** (`lib/index.js`)：采用标准 Cordis ESM 插件规范，注册 `/git` 安全 RPC 拦截器与 Agent 工具。
-  - **Client Browser 端** (`lib/client.js`)：打包为自包含的浏览器端模块，遵循 `window.__ModuleLoader__.load({ id: '@civilization/dsh-git-sidebar', factory: ... })` 协议。
-  - **自包含样式编译**：利用 `lightningcss` 在构建期将 CSS Modules 直接转译并内联在 Client bundle 中，载入时自动注入 `<style data-plugin="@civilization/dsh-git-sidebar">`，无需宿主额外加载外部 CSS。
+  - **Client Browser 端** (`lib/client.js`)：打包为自包含的浏览器端模块，遵循 `window.__ModuleLoader__.load({ id: '@civilization/dsh-git-workbench', factory: ... })` 协议。
+  - **自包含样式编译**：利用 `lightningcss` 在构建期将 CSS Modules 直接转译并内联在 Client bundle 中，载入时自动注入 `<style data-plugin="@civilization/dsh-git-workbench">`，无需宿主额外加载外部 CSS。
 - **公共依赖**：
   - `@deepseek-ai/cordis`: `^4.0.0`
   - `@deepseek-ai/dsh-tools`: `^0.2.0`

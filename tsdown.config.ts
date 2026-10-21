@@ -80,7 +80,9 @@ export default [
     dts: false,
     sourcemap: true,
     clean: false,
-    external: [...PLATFORM_MODULES],
+    deps: {
+      neverBundle: [...PLATFORM_MODULES],
+    },
     plugins: [cssModulesPlugin()],
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
