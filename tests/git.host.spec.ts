@@ -22,7 +22,9 @@ let testDir: string | undefined
 
 afterEach(async () => {
   if (testDir) {
-    await rm(testDir, { recursive: true, force: true })
+    try {
+      await rm(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
+    } catch {}
     testDir = undefined
   }
 })
@@ -109,7 +111,7 @@ describe('git-executor', () => {
 })
 
 describe('git host plugin', () => {
-  it('registers connection RPC interceptor and responds to git queries', async () => {
+  it('registers webServer HTTP prefix routes and handles client RPC requests', async () => {
     testDir = await realpath(await mkdtemp(join(tmpdir(), 'dsh-git-plugin-test-')))
     const repo = join(testDir, 'repo')
     await mkdir(repo)
@@ -123,24 +125,21 @@ describe('git host plugin', () => {
     await git('commit', '-m', 'docs: init readme')
 
     const ctx = new Context()
-    let rpcHandler: ((endpoint: string, payload: unknown, signal: AbortSignal, peer: unknown) => Promise<unknown>) | undefined
-
-    // Mock connection service
-    ctx.provide('connection')
-    ;(ctx as any).connection = {
-      rpc: {
-        handle: (channel: string, handler: typeof rpcHandler) => {
-          expect(channel).toBe('/git')
-          rpcHandler = handler
-          return async () => {}
-        },
-      },
-    }
+    let registeredRoute: any
 
     // Mock webServer service
     ctx.provide('webServer')
     ;(ctx as any).webServer = {
-      register: () => () => {},
+      register: (route: any) => {
+        registeredRoute = route
+        return () => {}
+      },
+    }
+
+    // Mock sessions service
+    ctx.provide('sessions')
+    ;(ctx as any).sessions = {
+      get: () => undefined,
     }
 
     // Mock sandbox policy
@@ -148,19 +147,51 @@ describe('git host plugin', () => {
     ;(ctx as any).sandboxPolicy = { workspaceRoot: repo }
 
     GitPlugin.apply(ctx)
-    expect(rpcHandler).toBeDefined()
+    expect(registeredRoute).toBeDefined()
+    expect(registeredRoute.path).toBe('/git')
+
+    const callRpc = (endpoint: string, payload: any): Promise<any> => {
+      return new Promise<any>((resolve, reject) => {
+        let responseData = ''
+        let statusCode = 200
+        const req = {
+          method: 'POST',
+          url: `http://localhost/git/${endpoint}`,
+          on: (event: string, cb: any) => {
+            if (event === 'data') {
+              cb(Buffer.from(JSON.stringify({ type: 'client-request', rpcId: 'test-1', payload })))
+            } else if (event === 'end') {
+              cb()
+            }
+          },
+        }
+        const res = {
+          writeHead: (code: number) => { statusCode = code },
+          end: (data: string) => {
+            responseData = data
+            try {
+              expect(statusCode).toBe(200)
+              const parsed = JSON.parse(responseData)
+              expect(parsed.type).toBe('server-response')
+              expect(parsed.rpcId).toBe('test-1')
+              resolve(parsed.result)
+            } catch (e) {
+              reject(e)
+            }
+          },
+        }
+        registeredRoute.handler(req, res).catch(reject)
+      })
+    }
 
     // Test RPC status
-    const statusResult = (await rpcHandler!('status', {}, new AbortController().signal, {})) as { ok: boolean; value: { isRepo: boolean; branch: string } }
+    const statusResult = await callRpc('status', {})
     expect(statusResult.ok).toBe(true)
     expect(statusResult.value.isRepo).toBe(true)
     expect(statusResult.value.branch).toBe('master')
 
     // Test RPC log with DAG topology
-    const logResult = (await rpcHandler!('log', { maxCount: 5 }, new AbortController().signal, {})) as {
-      ok: boolean
-      value: Array<{ subject: string; lane: number; paths: unknown[] }>
-    }
+    const logResult = await callRpc('log', { maxCount: 5 })
     expect(logResult.ok).toBe(true)
     expect(logResult.value.length).toBe(1)
     expect(logResult.value[0]?.subject).toBe('docs: init readme')
@@ -168,43 +199,26 @@ describe('git host plugin', () => {
     expect(Array.isArray(logResult.value[0]?.paths)).toBe(true)
 
     // Test RPC checkout new branch
-    const checkoutResult = (await rpcHandler!('checkout', { branch: 'feat/test-branch', create: true }, new AbortController().signal, {})) as {
-      ok: boolean
-      value: { success: boolean; message?: string }
-    }
+    const checkoutResult = await callRpc('checkout', { branch: 'feat/test-branch', create: true })
     expect(checkoutResult.ok).toBe(true)
     expect(checkoutResult.value.success).toBe(true)
 
     // Check status reflects new branch
-    const branchStatus = (await rpcHandler!('status', {}, new AbortController().signal, {})) as {
-      ok: boolean
-      value: { branch: string }
-    }
+    const branchStatus = await callRpc('status', {})
     expect(branchStatus.value.branch).toBe('feat/test-branch')
 
     // Test RPC createTag
-    const createTagRes = (await rpcHandler!(
-      'createTag',
-      { name: 'v1.0.0', message: 'prod release' },
-      new AbortController().signal,
-      {},
-    )) as { ok: boolean; value: { success: boolean } }
+    const createTagRes = await callRpc('createTag', { name: 'v1.0.0', message: 'prod release' })
     expect(createTagRes.ok).toBe(true)
     expect(createTagRes.value.success).toBe(true)
 
     // Test RPC tags query
-    const tagsRes = (await rpcHandler!('tags', {}, new AbortController().signal, {})) as {
-      ok: boolean
-      value: Array<{ name: string; message: string }>
-    }
+    const tagsRes = await callRpc('tags', {})
     expect(tagsRes.ok).toBe(true)
-    expect(tagsRes.value.some(t => t.name === 'v1.0.0')).toBe(true)
+    expect(tagsRes.value.some((t: any) => t.name === 'v1.0.0')).toBe(true)
 
     // Test RPC deleteTag
-    const delTagRes = (await rpcHandler!('deleteTag', { name: 'v1.0.0' }, new AbortController().signal, {})) as {
-      ok: boolean
-      value: { success: boolean }
-    }
+    const delTagRes = await callRpc('deleteTag', { name: 'v1.0.0' })
     expect(delTagRes.ok).toBe(true)
     expect(delTagRes.value.success).toBe(true)
 
