@@ -1,5 +1,5 @@
 /**
- * Status bar Git branch pill and popover branch switcher (IDEA / VS Code style).
+ * Status bar Git branch pill and popover branch switcher (Clean & Elegant UI).
  * Injected into the 'conversation.composer.dock' slot at order: -1.
  */
 
@@ -28,39 +28,20 @@ function IconBranchOutlineRegular({ className }: { className?: string }): React.
 
 function IconCheckOutlineRegular({ className }: { className?: string }): React.ReactElement {
   return (
-    <svg className={className} width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="3 8 7 12 13 4" />
-    </svg>
-  )
-}
-
-function IconPlusOutlineRegular({ className }: { className?: string }): React.ReactElement {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <line x1="8" y1="3" x2="8" y2="13" />
-      <line x1="3" y1="8" x2="13" y2="8" />
     </svg>
   )
 }
 
 function IconRefreshOutlineRegular({ className }: { className?: string }): React.ReactElement {
   return (
-    <svg className={className} width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
       <path d="M2 2v4h4" />
     </svg>
   )
 }
-
-function IconSearchOutlineRegular({ className }: { className?: string }): React.ReactElement {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <circle cx="7" cy="7" r="4.5" />
-      <line x1="10.5" y1="10.5" x2="14" y2="14" />
-    </svg>
-  )
-}
-
 
 export interface GitBranchPillProps {
   getStatus?: ((sessionId?: string) => Promise<GitStatusSummary>) | undefined
@@ -123,8 +104,8 @@ export const GitBranchPill = memo(function GitBranchPill({
     if (!anchorRef.current) return
     const rect = anchorRef.current.getBoundingClientRect()
     setPopoverPos({
-      bottom: window.innerHeight - rect.top + 6,
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - 330)),
+      bottom: window.innerHeight - rect.top + 8,
+      left: Math.max(12, Math.min(rect.left, window.innerWidth - 340)),
     })
   }, [])
 
@@ -220,7 +201,7 @@ export const GitBranchPill = memo(function GitBranchPill({
     return null
   }
 
-  const currentBranchName = status?.branch || 'master'
+  const currentBranchName = status?.branch || 'main'
 
   return (
     <span ref={anchorRef} className={css.anchor} data-composer-stat="git-branch">
@@ -246,7 +227,6 @@ export const GitBranchPill = memo(function GitBranchPill({
         >
           <div className={css.header}>
             <div className={css.searchRow}>
-              <IconSearchOutlineRegular className={css.searchIcon} />
               <input
                 autoFocus
                 className={css.searchInput}
@@ -259,18 +239,15 @@ export const GitBranchPill = memo(function GitBranchPill({
             <div className={css.actionBar}>
               <button
                 type="button"
-                className={css.toolBtn}
-                title="新建分支"
+                className={css.toolBtnPrimary}
                 onClick={() => { setCreatingBranch(prev => !prev) }}
               >
-                <IconPlusOutlineRegular className={css.btnIcon} />
-                <span>新建分支</span>
+                <span>+ 新建分支</span>
               </button>
               <div className={css.toolBtnGroup}>
                 <button
                   type="button"
                   className={css.toolBtn}
-                  title="拉取 (Pull)"
                   onClick={() => { void handlePull() }}
                 >
                   Pull
@@ -278,7 +255,6 @@ export const GitBranchPill = memo(function GitBranchPill({
                 <button
                   type="button"
                   className={css.toolBtn}
-                  title="推送 (Push)"
                   onClick={() => { void handlePush() }}
                 >
                   Push
@@ -325,32 +301,29 @@ export const GitBranchPill = memo(function GitBranchPill({
                   <IconBranchOutlineRegular className={css.itemIcon} />
                   <span className={css.itemText}>{b.name}</span>
                 </div>
-                {b.isCurrent ? (
-                  <IconCheckOutlineRegular className={css.checkMark} />
-                ) : (
-                  b.ahead !== undefined && b.ahead > 0 && <span className={css.badge}>↑{b.ahead}</span>
-                )}
+                {b.isCurrent && <IconCheckOutlineRegular className={css.checkMark} />}
               </button>
             ))}
 
             {/* Remote Branches */}
             {filteredRemote.length > 0 && (
               <>
-                <div className={css.groupLabel} style={{ marginTop: '6px' }}>
-                  远程分支 ({filteredRemote.length})
-                </div>
+                <div className={css.groupLabel}>远程分支 ({filteredRemote.length})</div>
                 {filteredRemote.map(b => (
                   <button
                     key={b.name}
                     type="button"
-                    className={css.branchItem}
+                    className={`${css.branchItem} ${b.isCurrent ? css.currentBranch : ''}`}
                     disabled={switching}
-                    onClick={() => { void handleCheckout(b.name) }}
+                    onClick={() => {
+                      if (!b.isCurrent) void handleCheckout(b.name)
+                    }}
                   >
                     <div className={css.branchItemLeft}>
                       <IconBranchOutlineRegular className={css.itemIcon} />
                       <span className={css.itemText}>{b.name}</span>
                     </div>
+                    {b.isCurrent && <IconCheckOutlineRegular className={css.checkMark} />}
                   </button>
                 ))}
               </>
