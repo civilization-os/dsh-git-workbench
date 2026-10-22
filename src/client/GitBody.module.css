@@ -1229,7 +1229,7 @@
   height: 26px;
   padding: 0 10px;
   border-top: 0.5px solid var(--dsw-alias-border-l2);
-  background: color-mix(in srgb, var(--dsw-alias-label-primary) 2%, transparent);
+  background: var(--dsw-alias-bg-layer-2, #f5f5f5);
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
   flex-shrink: 0;
