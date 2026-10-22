@@ -1,6 +1,6 @@
 {
   "name": "@civilization/dsh-git-workbench",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "IntelliJ IDEA-grade Git Workbench, DAG topology graph, branch switcher, tag manager and agent tools for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.js",
