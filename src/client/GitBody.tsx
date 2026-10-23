@@ -4,7 +4,7 @@
  * branch switcher, and unified diff inspector.
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
 import type {
   GitBranchesSummary,
@@ -22,6 +22,15 @@ import {
 } from './git-helpers.ts'
 import type {} from './locales.ts'
 import css from './GitBody.module.css'
+
+const CONVENTIONAL_CHIPS = [
+  { prefix: 'feat: ', label: 'feat', title: '新特性 (feature)', className: css.typeFeat },
+  { prefix: 'fix: ', label: 'fix', title: '问题修复 (bug fix)', className: css.typeFix },
+  { prefix: 'refactor: ', label: 'refactor', title: '代码重构', className: css.typeRefactor },
+  { prefix: 'docs: ', label: 'docs', title: '文档变更', className: css.typeDocs },
+  { prefix: 'perf: ', label: 'perf', title: '性能优化', className: css.typeRelease },
+  { prefix: 'chore: ', label: 'chore', title: '日常维护与依赖', className: css.typeChore },
+] as const
 
 function getTypeBadgeClass(type?: string): string {
   switch (type) {
@@ -129,14 +138,25 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('changes')
   const [loading, setLoading] = useState(false)
 
+  // Fluid Segmented Tab Indicator Refs & State
+  const tabChangesRef = useRef<HTMLButtonElement>(null)
+  const tabTreeRef = useRef<HTMLButtonElement>(null)
+  const tabBranchesRef = useRef<HTMLButtonElement>(null)
+  const tabTagsRef = useRef<HTMLButtonElement>(null)
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number; opacity: number }>({ left: 0, width: 0, opacity: 0 })
+
   const [status, setStatus] = useState<GitStatusSummary | null>(null)
   const [commits, setCommits] = useState<readonly GitCommitItem[]>([])
   const [branches, setBranches] = useState<GitBranchesSummary | null>(null)
   const [tags, setTags] = useState<readonly GitTagItem[]>([])
 
-  // Commit Console State
+  // Commit Console & Morphing State
   const [commitMessage, setCommitMessage] = useState('')
   const [committing, setCommitting] = useState(false)
+  const [commitState, setCommitState] = useState<'idle' | 'committing' | 'success'>('idle')
+
+  // DAG Tree Hover State
+  const [hoveredCommitHash, setHoveredCommitHash] = useState<string | null>(null)
 
   // Diff Preview State
   const [selectedFileDiff, setSelectedFileDiff] = useState<{ path: string; staged: boolean; diff: string } | null>(null)
@@ -240,7 +260,35 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
     }
   }, [discard, refresh, sessionId])
 
-  // Commit
+  // Update fluid tab indicator pill geometry
+  useEffect(() => {
+    let targetEl: HTMLButtonElement | null = null
+    if (activeTab === 'changes') targetEl = tabChangesRef.current
+    else if (activeTab === 'tree') targetEl = tabTreeRef.current
+    else if (activeTab === 'branches') targetEl = tabBranchesRef.current
+    else if (activeTab === 'tags') targetEl = tabTagsRef.current
+
+    if (targetEl) {
+      setIndicatorStyle({
+        left: targetEl.offsetLeft,
+        width: targetEl.offsetWidth,
+        opacity: 1,
+      })
+    }
+  }, [activeTab, commits.length, status?.totalChanges, tags.length])
+
+  // Conventional Commits chip insertion helper
+  const handleInsertPrefix = useCallback((prefix: string) => {
+    setCommitMessage(prev => {
+      const match = prev.match(/^[a-z]+(\([a-z0-9_-]+\))?:\s*/i)
+      if (match) {
+        return prefix + prev.slice(match[0].length)
+      }
+      return prefix + prev
+    })
+  }, [])
+
+  // Commit with morphing state feedback
   const handleCommit = useCallback(async (andPush = false) => {
     const trimmed = commitMessage.trim()
     if (!trimmed) {
@@ -248,18 +296,26 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
       return
     }
 
+    setCommitState('committing')
     setCommitting(true)
     try {
       const res = await commit(sessionId, trimmed)
       if (res.success) {
+        setCommitState('success')
         setCommitMessage('')
         if (andPush) {
           await push(sessionId)
         }
         await refresh()
+        setTimeout(() => {
+          setCommitState('idle')
+        }, 1200)
       } else {
+        setCommitState('idle')
         alert(res.message || '提交失败')
       }
+    } catch {
+      setCommitState('idle')
     } finally {
       setCommitting(false)
     }
@@ -434,7 +490,11 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
       {/* 1. Header Banner */}
       <div className={css.header}>
         <div className={css.branchInfo}>
-          <span className={css.branchBadge} title={`当前分支: ${status.branch}`}>
+          <span
+            className={css.branchBadge}
+            title={`当前分支: ${status.branch} (点击管理分支)`}
+            onClick={() => { setActiveTab('branches') }}
+          >
             <svg className={css.branchIcon} width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
               <path d="M11.75 2.5a1.75 1.75 0 1 0-2.45 1.606V6.5a1.5 1.5 0 0 1-1.5 1.5H5.8A2.75 2.75 0 0 0 3.5 6.25V4.106a1.75 1.75 0 1 0-1.5 0v7.788a1.75 1.75 0 1 0 1.5 0V8.25A1.25 1.25 0 0 1 4.75 7h3a3 3 0 0 0 3-3V4.106a1.75 1.75 0 0 0 1-1.606z" />
             </svg>
@@ -493,9 +553,18 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
         </div>
       </div>
 
-      {/* 2. Tabs Bar */}
+      {/* 2. Tabs Bar with Fluid Segmented Indicator */}
       <div className={css.tabs}>
+        <div
+          className={css.tabIndicator}
+          style={{
+            left: `${indicatorStyle.left}px`,
+            width: `${indicatorStyle.width}px`,
+            opacity: indicatorStyle.opacity,
+          }}
+        />
         <button
+          ref={tabChangesRef}
           type="button"
           className={`${css.tab} ${activeTab === 'changes' ? css.tabActive : ''}`}
           onClick={() => { setActiveTab('changes') }}
@@ -504,6 +573,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
           {totalChanges > 0 && <span className={css.tabCount}>{totalChanges}</span>}
         </button>
         <button
+          ref={tabTreeRef}
           type="button"
           className={`${css.tab} ${activeTab === 'tree' ? css.tabActive : ''}`}
           onClick={() => { setActiveTab('tree') }}
@@ -512,6 +582,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
           <span className={css.tabCount}>{commits.length}</span>
         </button>
         <button
+          ref={tabBranchesRef}
           type="button"
           className={`${css.tab} ${activeTab === 'branches' ? css.tabActive : ''}`}
           onClick={() => { setActiveTab('branches') }}
@@ -519,6 +590,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
           {t('tabs.branches')}
         </button>
         <button
+          ref={tabTagsRef}
           type="button"
           className={`${css.tab} ${activeTab === 'tags' ? css.tabActive : ''}`}
           onClick={() => { setActiveTab('tags') }}
@@ -529,18 +601,12 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
       </div>
 
       {locatedNotice && (
-        <div style={{
-          padding: '6px 12px',
-          background: 'color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent)',
-          color: 'var(--dsw-alias-state-business-primary)',
-          fontSize: '11px',
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          borderBottom: '0.5px solid var(--dsw-alias-border-l2)',
-        }}>
-          <span>🎯</span>
+        <div className={css.locatedToast}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            <circle cx="8" cy="8" r="2" fill="currentColor" />
+            <path d="M8 0v3M8 13v3M0 8h3M13 8h3" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
           <span>{locatedNotice}</span>
         </div>
       )}
@@ -711,8 +777,22 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                   </div>
                 )}
 
-                {/* 1.4 Commit Console (IDEA Style) */}
+                {/* 1.4 Commit Console (IDEA Style with Conventional Chips & Morphing State) */}
                 <div className={css.commitBox}>
+                  {/* Conventional Commits Chips Bar */}
+                  <div className={css.conventionalChipsRow}>
+                    {CONVENTIONAL_CHIPS.map(c => (
+                      <span
+                        key={c.prefix}
+                        className={`${css.conventionalChip} ${c.className}`}
+                        title={c.title}
+                        onClick={() => { handleInsertPrefix(c.prefix) }}
+                      >
+                        {c.label}
+                      </span>
+                    ))}
+                  </div>
+
                   <textarea
                     className={css.commitTextarea}
                     placeholder={t('commit.placeholder')}
@@ -724,35 +804,58 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                     <button
                       type="button"
                       className={css.commitPushBtn}
-                      disabled={committing || stagedCount === 0}
+                      disabled={committing || stagedCount === 0 || commitState === 'success'}
                       onClick={() => { void handleCommit(true) }}
                     >
                       {t('actions.commitAndPush')}
                     </button>
                     <button
                       type="button"
-                      className={css.commitBtn}
-                      disabled={committing || stagedCount === 0}
+                      className={`${css.commitBtn} ${commitState === 'success' ? css.commitBtnSuccess : ''}`}
+                      disabled={committing || stagedCount === 0 || commitState === 'success'}
                       onClick={() => { void handleCommit(false) }}
                     >
-                      {t('actions.commit')}
+                      {commitState === 'committing' ? (
+                        <>
+                          <span className={css.miniSpinner} />
+                          <span>提交中...</span>
+                        </>
+                      ) : commitState === 'success' ? (
+                        <>
+                          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" />
+                          </svg>
+                          <span>已提交!</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>{t('actions.commit')}</span>
+                          <span className={css.commitKbdHint}>Ctrl+↵</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
               </>
             )}
 
-            {/* Active File Diff Inspector */}
+            {/* Active File Diff Inspector Drawer */}
             {selectedFileDiff && (
-              <div style={{ marginTop: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600 }}>差异对比: {selectedFileDiff.path}</span>
+              <div className={css.diffDrawer}>
+                <div className={css.diffDrawerHeader}>
+                  <span className={css.diffFilePath}>
+                    <span>📄</span>
+                    <span>{selectedFileDiff.path}</span>
+                    <span className={`${css.statusBadge} ${selectedFileDiff.staged ? css.statusA : css.statusM}`} style={{ width: 'auto', padding: '0 4px' }}>
+                      {selectedFileDiff.staged ? '已暂存' : '工作区'}
+                    </span>
+                  </span>
                   <button
                     type="button"
                     className={css.actionTextBtn}
                     onClick={() => { setSelectedFileDiff(null) }}
                   >
-                    关闭
+                    关闭 ✕
                   </button>
                 </div>
                 <DiffViewer diffText={selectedFileDiff.diff} />
@@ -821,17 +924,25 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                       height: `${filteredCommits.length * 28}px`,
                     }}
                   >
-                    {/* Continuous Edges (Trunk & Branch Bezier Rails) */}
-                    {dagGraph.edges.map(e => (
-                      <path
-                        key={e.key}
-                        d={e.d}
-                        stroke={e.color}
-                        strokeWidth={2}
-                        fill="none"
-                        strokeLinecap="round"
-                      />
-                    ))}
+                    {/* Continuous Edges (Trunk & Branch Bezier Rails with Hover/Select Accentuation) */}
+                    {dagGraph.edges.map(e => {
+                      const isHighlighted = (hoveredCommitHash && (hoveredCommitHash.startsWith(e.fromHash) || (e.toHash && hoveredCommitHash.startsWith(e.toHash))))
+                        || (selectedCommitHash && (selectedCommitHash.startsWith(e.fromHash) || (e.toHash && selectedCommitHash.startsWith(e.toHash))))
+                      const isDimmed = (hoveredCommitHash || selectedCommitHash) && !isHighlighted
+
+                      return (
+                        <path
+                          key={e.key}
+                          d={e.d}
+                          stroke={e.color}
+                          strokeWidth={isHighlighted ? 3 : 2}
+                          opacity={isDimmed ? 0.35 : 1}
+                          fill="none"
+                          strokeLinecap="round"
+                          style={{ transition: 'stroke-width 0.15s ease, opacity 0.15s ease' }}
+                        />
+                      )
+                    })}
 
                     {/* Nodes (Centered on (x, y)) */}
                     {dagGraph.nodes.map((n) => {
@@ -839,12 +950,20 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                       return (
                         <g key={n.hash}>
                           {isHighlighted && (
-                            <circle
-                              cx={n.x}
-                              cy={n.y}
-                              r={8.5}
-                              className={css.locateGlowRing}
-                            />
+                            <>
+                              <circle
+                                cx={n.x}
+                                cy={n.y}
+                                r={8.5}
+                                className={css.locateGlowRing}
+                              />
+                              <circle
+                                cx={n.x}
+                                cy={n.y}
+                                r={5}
+                                className={css.locateWaveRingOuter}
+                              />
+                            </>
                           )}
 
                           {n.hasTag && (
@@ -898,6 +1017,8 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                           isHighlighted ? css.treeRowHighlighted : '',
                         ].filter(Boolean).join(' ')}
                         onClick={() => { void handleSelectCommit(c.hash) }}
+                        onMouseEnter={() => { setHoveredCommitHash(c.hash) }}
+                        onMouseLeave={() => { setHoveredCommitHash(null) }}
                       >
                         {/* Col 1: Empty Graph Column Spacer */}
                         <div style={{ width: `${graphColWidth}px`, height: 28, flexShrink: 0 }} />
@@ -906,10 +1027,10 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                         <div className={css.subjectCol}>
                           {c.refs?.map((ref, idx) => {
                             let refClass = css.refBranch
-                            let refText = ref
-                            if (ref.startsWith('tag: ')) {
+                            const isTag = ref.startsWith('tag: ')
+                            const refText = isTag ? ref.slice(5) : ref
+                            if (isTag) {
                               refClass = css.refTag
-                              refText = `🏷️ ${ref.slice(5)}`
                             } else if (ref.includes('HEAD')) {
                               refClass = css.refHead
                             } else if (ref.startsWith('origin/')) {
@@ -917,6 +1038,11 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                             }
                             return (
                               <span key={idx} className={`${css.refBadge} ${refClass}`} title={ref}>
+                                {isTag && (
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style={{ marginRight: '3px', flexShrink: 0 }}>
+                                    <path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25v5.025zM6 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
+                                  </svg>
+                                )}
                                 {refText}
                               </span>
                             )
@@ -927,7 +1053,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                             </span>
                           )}
                           <span className={css.treeSubject} title={c.subject}>
-                            {c.subject}
+                            {parsed.type ? parsed.cleanSubject : c.subject}
                           </span>
 
                           {/* Hover Actions */}
@@ -952,7 +1078,9 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                                 setActiveTab('tags')
                               }}
                             >
-                              🏷️
+                              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25v5.025zM6 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
+                              </svg>
                             </button>
                             <button
                               type="button"
@@ -963,7 +1091,9 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                                 setActiveTab('branches')
                               }}
                             >
-                              ⑂
+                              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M11.75 2.5a1.75 1.75 0 1 0-2.45 1.606V6.5a1.5 1.5 0 0 1-1.5 1.5H5.8A2.75 2.75 0 0 0 3.5 6.25V4.106a1.75 1.75 0 1 0-1.5 0v7.788a1.75 1.75 0 1 0 1.5 0V8.25A1.25 1.25 0 0 1 4.75 7h3a3 3 0 0 0 3-3V4.106a1.75 1.75 0 0 0 1-1.606z" />
+                              </svg>
                             </button>
                           </div>
                         </div>
@@ -1029,10 +1159,10 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                           {commitDetail.commit.refs.map((ref, idx) => {
                             let refClass = css.refBranch
-                            let refText = ref
-                            if (ref.startsWith('tag: ')) {
+                            const isTag = ref.startsWith('tag: ')
+                            const refText = isTag ? ref.slice(5) : ref
+                            if (isTag) {
                               refClass = css.refTag
-                              refText = `🏷️ ${ref.slice(5)}`
                             } else if (ref.includes('HEAD')) {
                               refClass = css.refHead
                             } else if (ref.startsWith('origin/')) {
@@ -1040,6 +1170,11 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                             }
                             return (
                               <span key={idx} className={`${css.refBadge} ${refClass}`}>
+                                {isTag && (
+                                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style={{ marginRight: '3px', flexShrink: 0 }}>
+                                    <path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25v5.025zM6 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
+                                  </svg>
+                                )}
                                 {refText}
                               </span>
                             )
@@ -1222,18 +1357,21 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
         {activeTab === 'branches' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {/* Search and New Branch bar */}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input
-                className={css.commitTextarea}
-                style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
-                placeholder={t('branch.filter')}
-                value={branchFilter}
-                onChange={(e) => { setBranchFilter(e.target.value) }}
-              />
+            <div className={css.searchToolbar}>
+              <div className={css.searchInputWrapper}>
+                <svg className={css.searchIcon} viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M11.5 7a4.499 4.499 0 1 1-8.998 0A4.499 4.499 0 0 1 11.5 7zm-.82 4.74a6 6 0 1 0-1.06 1.06l3.04 3.04a.75.75 0 1 0 1.06-1.06l-3.04-3.04z" />
+                </svg>
+                <input
+                  className={css.searchInputField}
+                  placeholder={t('branch.filter')}
+                  value={branchFilter}
+                  onChange={(e) => { setBranchFilter(e.target.value) }}
+                />
+              </div>
               <button
                 type="button"
-                className={css.actionTextBtn}
-                style={{ flexShrink: 0 }}
+                className={css.primaryPillBtn}
                 onClick={() => { setCreatingBranch(prev => !prev) }}
               >
                 + 新建分支
@@ -1244,8 +1382,8 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   autoFocus
-                  className={css.commitTextarea}
-                  style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
+                  className={css.formInput}
+                  style={{ flex: 1 }}
                   placeholder="新分支名称..."
                   value={newBranchName}
                   onChange={(e) => { setNewBranchName(e.target.value) }}
@@ -1274,23 +1412,22 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
               <div className={css.sectionHeader}>
                 <span>本地分支 ({filteredLocalBranches.length})</span>
               </div>
-              <div className={css.fileList}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '2px 0' }}>
                 {filteredLocalBranches.map(b => (
                   <div
                     key={b.name}
-                    className={css.fileItem}
-                    style={{ background: b.isCurrent ? 'rgba(56, 139, 253, 0.15)' : undefined }}
+                    className={`${css.branchItem} ${b.isCurrent ? css.branchItemActive : ''}`}
                     onClick={() => {
                       if (!b.isCurrent) void handleCheckoutBranch(b.name)
                     }}
                   >
                     <div className={css.fileLeft}>
-                      <span style={{ color: b.isCurrent ? '#388bfd' : 'inherit' }}>
-                        {b.isCurrent ? '●' : '○'}
-                      </span>
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: b.isCurrent ? 1 : 0.65 }}>
+                        <path d="M11.75 2.5a1.75 1.75 0 1 0-2.45 1.606V6.5a1.5 1.5 0 0 1-1.5 1.5H5.8A2.75 2.75 0 0 0 3.5 6.25V4.106a1.75 1.75 0 1 0-1.5 0v7.788a1.75 1.75 0 1 0 1.5 0V8.25A1.25 1.25 0 0 1 4.75 7h3a3 3 0 0 0 3-3V4.106a1.75 1.75 0 0 0 1-1.606z" />
+                      </svg>
                       <span style={{ fontWeight: b.isCurrent ? 600 : 400 }}>{b.name}</span>
                     </div>
-                    {b.isCurrent && <span style={{ fontSize: '11px', color: '#58a6ff' }}>当前检出</span>}
+                    {b.isCurrent && <span className={css.branchCurrentTag}>当前检出</span>}
                   </div>
                 ))}
               </div>
@@ -1302,15 +1439,17 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                 <div className={css.sectionHeader}>
                   <span>远程分支 ({filteredRemoteBranches.length})</span>
                 </div>
-                <div className={css.fileList}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '2px 0' }}>
                   {filteredRemoteBranches.map(b => (
                     <div
                       key={b.name}
-                      className={css.fileItem}
+                      className={css.branchItem}
                       onClick={() => { void handleCheckoutBranch(b.name) }}
                     >
                       <div className={css.fileLeft}>
-                        <span style={{ opacity: 0.6 }}>☁</span>
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.6 }}>
+                          <path d="M10.25 10a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zm-4.5 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM13.5 6.5A4.496 4.496 0 0 0 9 2.062a4.5 4.5 0 0 0-4.382 3.447A4.002 4.002 0 0 0 1 9.5a4 4 0 0 0 4 4h7a3.5 3.5 0 0 0 1.5-6.67z" />
+                        </svg>
                         <span>{b.name}</span>
                       </div>
                     </div>
@@ -1325,18 +1464,21 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
         {activeTab === 'tags' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {/* Search and New Tag bar */}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input
-                className={css.commitTextarea}
-                style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
-                placeholder={t('tag.filter')}
-                value={tagFilter}
-                onChange={(e) => { setTagFilter(e.target.value) }}
-              />
+            <div className={css.searchToolbar}>
+              <div className={css.searchInputWrapper}>
+                <svg className={css.searchIcon} viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M11.5 7a4.499 4.499 0 1 1-8.998 0A4.499 4.499 0 0 1 11.5 7zm-.82 4.74a6 6 0 1 0-1.06 1.06l3.04 3.04a.75.75 0 1 0 1.06-1.06l-3.04-3.04z" />
+                </svg>
+                <input
+                  className={css.searchInputField}
+                  placeholder={t('tag.filter')}
+                  value={tagFilter}
+                  onChange={(e) => { setTagFilter(e.target.value) }}
+                />
+              </div>
               <button
                 type="button"
-                className={css.actionTextBtn}
-                style={{ flexShrink: 0 }}
+                className={css.primaryPillBtn}
                 onClick={() => { setCreatingTag(prev => !prev) }}
               >
                 + {t('tag.newPrompt')}
@@ -1353,8 +1495,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                   </label>
                   <input
                     autoFocus
-                    className={css.commitTextarea}
-                    style={{ minHeight: '28px', height: '28px', padding: '4px 8px' }}
+                    className={css.formInput}
                     placeholder={t('tag.namePlaceholder')}
                     value={newTagName}
                     onChange={(e) => { setNewTagName(e.target.value) }}
@@ -1365,8 +1506,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                     {t('tag.targetCommitLabel')}
                   </label>
                   <input
-                    className={css.commitTextarea}
-                    style={{ minHeight: '28px', height: '28px', padding: '4px 8px' }}
+                    className={css.formInput}
                     placeholder="例如 687f282 或留空为 HEAD"
                     value={newTagCommit}
                     onChange={(e) => { setNewTagCommit(e.target.value) }}
@@ -1377,8 +1517,7 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
                     {t('tag.messageLabel')}
                   </label>
                   <input
-                    className={css.commitTextarea}
-                    style={{ minHeight: '28px', height: '28px', padding: '4px 8px' }}
+                    className={css.formInput}
                     placeholder={t('tag.messagePrompt')}
                     value={newTagMessage}
                     onChange={(e) => { setNewTagMessage(e.target.value) }}
@@ -1413,79 +1552,110 @@ export const GitBody = memo(function GitBody(props: GitBodyProps) {
               </div>
             ) : (
               <div className={css.tagList}>
-                {filteredTags.map(tag => (
-                  <div key={tag.name} className={css.tagCard}>
-                    <div className={css.tagCardHeader}>
-                      <div className={css.tagTitleRow}>
-                        <span style={{ fontSize: '13px' }}>🏷️</span>
-                        <span
-                          className={css.tagName}
-                          title="点击在图谱中定位"
-                          onClick={() => { void handleLocateCommit(tag.commitHash, tag.name) }}
-                        >
-                          {tag.name}
-                        </span>
-                        <span
-                          className={css.tagShaPill}
-                          title={`Commit: ${tag.commitHash} (点击在图谱中定位)`}
-                          onClick={() => { void handleLocateCommit(tag.commitHash, tag.name) }}
-                        >
-                          {tag.shortHash}
-                        </span>
-                        {tag.isAnnotated && (
-                          <span className={css.tagAnnotatedBadge}>{t('tag.annotated')}</span>
-                        )}
-                      </div>
-                      <div className={css.tagActions}>
-                        <button
-                          type="button"
-                          className={css.tagLocateBtn}
-                          title="在图谱中定位该提交"
-                          onClick={() => { void handleLocateCommit(tag.commitHash, tag.name) }}
-                        >
-                          <span>🎯</span>
-                          <span>{t('tag.locateBtn')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={css.fileMiniBtn}
-                          title={t('tag.copyName')}
-                          onClick={() => {
-                            void navigator.clipboard.writeText(tag.name)
-                          }}
-                        >
-                          📋
-                        </button>
-                        <button
-                          type="button"
-                          className={css.fileMiniBtn}
-                          title={t('tag.deleteBtn')}
-                          onClick={() => { void handleDeleteTag(tag.name) }}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
+                {filteredTags.map(tag => {
+                  const avatar = getAuthorAvatar(tag.author)
+                  const parsedMsg = tag.message ? parseConventionalCommit(tag.message) : undefined
 
-                    {/* Commit Message or Tag Annotation */}
-                    {tag.message && (
-                      <div className={css.tagMessage} title={tag.message}>
-                        {tag.message}
-                      </div>
-                    )}
+                  return (
+                    <div key={tag.name} className={css.tagCard}>
+                      {/* Row 1: Tag Name, SHA, Annotated Badge & Author / Actions on Right */}
+                      <div className={css.tagCardHeader}>
+                        <div className={css.tagTitleRow}>
+                          <svg className={css.tagIcon} viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25v5.025zM6 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
+                          </svg>
+                          <span
+                            className={css.tagName}
+                            title="点击在图谱中定位"
+                            onClick={() => { void handleLocateCommit(tag.commitHash, tag.name) }}
+                          >
+                            {tag.name}
+                          </span>
+                          <span
+                            className={css.tagShaPill}
+                            title={`Commit: ${tag.commitHash} (点击在图谱中定位)`}
+                            onClick={() => { void handleLocateCommit(tag.commitHash, tag.name) }}
+                          >
+                            {tag.shortHash}
+                          </span>
+                          {tag.isAnnotated && (
+                            <span className={css.tagAnnotatedBadge}>{t('tag.annotated')}</span>
+                          )}
+                        </div>
 
-                    {/* Footer with author and date */}
-                    <div className={css.tagMetaFooter}>
-                      <span className={css.tagAuthor}>
-                        <span>👤</span>
-                        <span>{tag.author}</span>
-                      </span>
-                      <span title={tag.date}>
-                        {tag.relativeDate}
-                      </span>
+                        <div className={css.tagRightHeader}>
+                          {tag.author && (
+                            <div className={css.tagAuthorSnippet} title={tag.author}>
+                              <span className={css.authorAvatar} style={{ background: avatar.color }}>
+                                {avatar.initial}
+                              </span>
+                              <span>{tag.author}</span>
+                            </div>
+                          )}
+                          {tag.relativeDate && (
+                            <>
+                              <span className={css.tagDotSeparator}>·</span>
+                              <span className={css.tagDateSnippet} title={tag.date}>
+                                {tag.relativeDate}
+                              </span>
+                            </>
+                          )}
+                          <div className={css.tagActions}>
+                            <button
+                              type="button"
+                              className={`${css.tagActionIconBtn} ${css.tagActionLocate}`}
+                              title={t('tag.locateBtn')}
+                              onClick={() => { void handleLocateCommit(tag.commitHash, tag.name) }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                                <circle cx="8" cy="8" r="2" fill="currentColor" />
+                                <path d="M8 0v3M8 13v3M0 8h3M13 8h3" stroke="currentColor" strokeWidth="1.5" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className={css.tagActionIconBtn}
+                              title={t('tag.copyName')}
+                              onClick={() => {
+                                void navigator.clipboard.writeText(tag.name)
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z" />
+                                <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className={`${css.tagActionIconBtn} ${css.tagActionDelete}`}
+                              title={t('tag.deleteBtn')}
+                              onClick={() => { void handleDeleteTag(tag.name) }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M11 1.75V3h3.25a.75.75 0 0 1 0 1.5h-.878l-.78 10.138A1.75 1.75 0 0 1 10.846 16H5.154a1.75 1.75 0 0 1-1.746-1.612L2.628 4.5H1.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.5a.25.25 0 0 0-.25.25V3h3.5V1.75a.25.25 0 0 0-.25-.25h-3zM4.133 4.5l.76 9.877a.25.25 0 0 0 .249.23h5.716a.25.25 0 0 0 .249-.23l.76-9.877H4.133z" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Tag Message with Optional Conventional Badge */}
+                      {tag.message && (
+                        <div className={css.tagMessageRow} title={tag.message}>
+                          {parsedMsg?.type && (
+                            <span className={`${css.typeBadge} ${getTypeBadgeClass(parsedMsg.type)}`}>
+                              {parsedMsg.type}
+                            </span>
+                          )}
+                          <span className={css.tagMessageText}>
+                            {parsedMsg?.type ? parsedMsg.cleanSubject : tag.message}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

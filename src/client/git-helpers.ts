@@ -41,10 +41,11 @@ export function parseConventionalCommit(subject: string): ParsedCommitSubject {
   if (match && match[1]) {
     const rawType = match[1].toLowerCase() as ConventionalType
     const scope = match[2]?.trim()
+    const cleanSubject = match[3]?.trim() || trimmed
     return {
       type: rawType,
       ...scope !== undefined ? { scope } : {},
-      cleanSubject: trimmed,
+      cleanSubject,
     }
   }
 
