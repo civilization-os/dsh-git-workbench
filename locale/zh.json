@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Git 工作台",
+    "description": "IntelliJ IDEA 级别的 Git 版本控制工作台；DAG 拓扑提交图谱、多分支合并轨道可视化、状态栏底部分支切换胶囊与全量变动管理。"
+  }
+}
